@@ -23,12 +23,12 @@ router.get("/", async (req, res) => {
 router.post("/signup", async (req, res) => {
     try {
         console.log("req.body", req.body);
-        const { name, age, class_division } = req.body;
+        const { firstname, lastname, DOB, gender, loc, evalID } = req.body;
 
         // Validate user input
-        if (!name || !age || !class_division) {
+        if (!firstname ||!lastname || !DOB || !gender || !loc || !evalID) {
             return res.status(400).json({
-                error: "Missing required fields: name, age, and class_division",
+                error: "Missing required fields",
             });
         }
         // Generate a unique 4-digit PIN
@@ -39,9 +39,12 @@ router.post("/signup", async (req, res) => {
 
         // Create a student document in Firestore with generated PIN
         const studentRef = await db.collection("students").doc(pin).set({
-            name,
-            age,
-            class_division,
+            firstname,
+            lastname,
+            DOB,
+            gender,
+            loc,
+            evalID,
             pin: hashedPin, // Store only the hashed PIN
         });
 
@@ -49,9 +52,12 @@ router.post("/signup", async (req, res) => {
         const response = {
             message: "Student created successfully",
             studentId: pin, // Only send PIN, not hashedPIN
-            name,
-            age,
-            class_division,
+            firstname,
+            lastname,
+            DOB,
+            gender,
+            loc,
+            evalID
         };
 
         // Optionally, return only relevant details or omit certain fields
@@ -66,7 +72,7 @@ router.post("/signup", async (req, res) => {
 });
 
 // Login endpoint
-router.post("/login", async (req, res) => {
+router.post("/student_login", async (req, res) => {
     try {
         const { pin } = req.body;
 
