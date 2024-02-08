@@ -7,7 +7,7 @@ const bcrypt = require("bcrypt"); // Password hashing
 
 router.get("/", async (req, res) => {
     try {
-        const students = await db.collection("student").get();
+        const students = await db.collection("development-1").get();
         console.log(students.docs);
         const studentData = students.docs.map((doc) => doc.data());
         res.json(studentData);
@@ -22,50 +22,74 @@ router.get("/", async (req, res) => {
 // Signup endpoint
 router.post("/signup", async (req, res) => {
     try {
-        console.log("req.body", req.body);
-        const { name, age, class_division } = req.body;
-
-        // Validate user input
-        if (!name || !age || !class_division) {
-            return res.status(400).json({
-                error: "Missing required fields: name, age, and class_division",
-            });
-        }
-        // Generate a unique 4-digit PIN
-        const pin = crypto.randomInt(1000, 9999).toString().padStart(4, "0");
-
-        // Hash the PIN securely (consider storing only the hash for additional security)
-        const hashedPin = await bcrypt.hash(pin, 10);
-
-        // Create a student document in Firestore with generated PIN
-        const studentRef = await db.collection("students").doc(pin).set({
-            name,
-            age,
-            class_division,
-            pin: hashedPin, // Store only the hashed PIN
+      // Destructure required fields from request body
+      const { firstName, lastName, dob, gender, location, uniqueId } = req.body;
+  
+      // Validate all required fields
+      if (!firstName || !lastName || !dob || !gender || !location || !uniqueId) {
+        return res.status(400).json({
+          error: "Missing required fields: firstName, lastName, dob, gender, location"
         });
-
-        // Customize response JSON according to requirements
-        const response = {
-            message: "Student created successfully",
-            studentId: pin, // Only send PIN, not hashedPIN
-            name,
-            age,
-            class_division,
-        };
-
-        // Optionally, return only relevant details or omit certain fields
-
-        res.json(response);
+      }
+  
+      const dobRegex = /^\d{2}-\d{2}-\d{4}$/;
+      if (!dobRegex.test(dob)) {
+        return res.status(400).json({
+          error: "Invalid DOB format. Please use DD-MM-YYYY."
+        });
+      }
+      // Hash the PIN securely (consider storing only the hash)
+      const hashedPin = uniqueId ? await bcrypt.hash(uniqueId, 10) : hashedPin; // use uniqueId if provided
+  
+      // Create a student document in Firestore
+      const studentRef = await db.collection("students").doc(uniqueId || pin).set({
+        firstName,
+        lastName,
+        dob,
+        gender,
+        location,
+        pin: hashedPin, // Store only the hashed PIN (or uniqueId if used)
+      });
+  
+      // Customize response JSON
+      const response = {
+        message: "Student created successfully",
+        studentId: uniqueId || pin, // use uniqueId if provided
+      };
+  
+      res.json(response);
     } catch (error) {
-        console.error("error at signup:", error);
-        // Handle specific errors (e.g., duplicate document ID)
-        // and provide informative error messages to the user
-        res.status(500).json({ error: "Failed to create student" });
+      console.error("Error at signup:", error);
+      res.status(500).json({ error: "Failed to create student" });
     }
-});
+  });
 
-// Login endpoint
+  router.delete("/delete/:uniqueId", async (req, res) => {
+    try {
+      const { uniqueId } = req.params;
+  
+      // Ensure uniqueId is provided
+      if (!uniqueId) {
+        return res.status(400).json({
+          error: "Missing student unique ID in request path."
+        });
+      }
+  
+      // Delete student document using uniqueId
+      await db.collection("students").doc(uniqueId).delete();
+  
+      // Customize response message
+      const response = {
+        message: `Student with ID ${uniqueId} deleted successfully`
+      };
+  
+      res.json(response);
+    } catch (error) {
+      console.error("Error deleting student:", error);
+      res.status(500).json({ error: "Failed to delete student" });
+    }
+  });
+  
 router.post("/login", async (req, res) => {
     try {
         const { pin } = req.body;
