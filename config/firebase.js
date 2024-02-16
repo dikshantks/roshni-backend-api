@@ -61,4 +61,4 @@ fetchData();
 const auth = admin.auth();
 
 // Export Firestore instance for use in other files
-module.exports = { db, auth };
+module.exports = {admin, db, auth };

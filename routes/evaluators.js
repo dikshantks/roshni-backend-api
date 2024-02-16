@@ -7,7 +7,7 @@ const bcrypt = require("bcrypt"); // Password hashing
 
 router.get("/", async (req, res) => {
     try {
-        const evaluators = await db.collection("evaluator").get();
+        const evaluators = await db.collection("evaluators").get();
         console.log(evaluators.docs);
         const evaluatorData = evaluators.docs.map((doc) => doc.data());
         res.json(evaluatorData);
@@ -29,11 +29,27 @@ router.post("/signup", async (req, res) => {
                 error: "Missing required fields",
             });
         }
+        const dobRegex = /^\d{2}-\d{2}-\d{4}$/;
+        if (!dobRegex.test(DOB)) {
+        return res.status(401).json({
+          error: "Invalid DOB format. Please use DD-MM-YYYY."
+        });
+      }
         // Generate a unique password
         const password = crypto.randomBytes(5).toString('hex');
 
-        // Generate a unique 4-digit PIN
-        const evalID = crypto.randomInt(1000, 9999).toString().padStart(4, "0");
+        async function generateUniquePin() {
+            let evalID;
+            let pinExists = true;
+            // Keep generating PINs until a unique one is found
+            while (pinExists) {
+                evalID = crypto.randomInt(1000, 9999).toString().padStart(4, "0");
+                const evaluatorDoc = await db.collection("evaluators").doc(evalID).get();
+                pinExists = evaluatorDoc.exists;
+            }
+            return evalID;
+          }
+        const evalID = await generateUniquePin();
 
         // Hash the PIN securely (consider storing only the hash for additional security)
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -73,7 +89,7 @@ router.post("/signup", async (req, res) => {
 });
 
 // Login endpoint
-router.post("/evaluator_login", async (req, res) => {
+router.post("/login", async (req, res) => {
     try {
         const { evalID, password } = req.body;
 
@@ -81,18 +97,25 @@ router.post("/evaluator_login", async (req, res) => {
             return res.status(400).json({ error: "Missing ID or password" });
         }
 
-        const evaluatorDoc = await db
-            .collection("evaluators")
-            .doc(pin.toString())
-            .get();
-        console.log("evaluatorDoc", evaluatorDoc);
+        const evaluatorDoc = await db.collection("evaluators").doc(evalID).get();
+
 
         if (!evaluatorDoc.exists) {
             return res.status(401).json({ error: "Invalid ID or password" });
         }
 
         const evaluatorData = evaluatorDoc.data();
-        delete evaluatorData.pin;
+        const hashedPassword = evaluatorData.password;
+
+        // Compare the provided password with the hashed password from the database
+        const passwordMatch = await bcrypt.compare(password, hashedPassword);
+
+        if (!passwordMatch) {
+            return res.status(401).json({ error: "Invalid ID or password" });
+        }
+
+        // If password is correct, delete the hashed password from the response
+        delete evaluatorData.password;
 
         res.json({
             message: "Login successful",
@@ -114,9 +137,13 @@ router.delete("/delete/:evalID", async (req, res) => {
         if (!evalID) {
             return res.status(400).json({ error: "Missing ID" });
         }
-
+        const evaluatorDoc = await db.collection("evaluators").doc(evalID).get();
+        if (!evaluatorDoc.exists) {
+            return res.status(404).json({ error: "Evaluator not found" });
+        }
+        else{
         await db.collection("evaluators").doc(evalID).delete();
-        res.json({ message: "Evaluator deleted successfully" });
+        res.json({ message: "Evaluator deleted successfully" });}
     } catch (error) {
         console.error("error at delete:", error);
         res.status(500).json({ error: "Failed to delete evaluator" });

@@ -4,116 +4,6 @@ const { admin, db } = require('../config/firebase'); // Import Firestore instanc
 const crypto = require('crypto'); // For secure random ID generation
 const bcrypt = require("bcrypt"); // Password hashing
 
-//adding a test
-router.post("/addtest", async (req, res) => {
-  try {
-    const { testPin, subject, time, expiry, createDate, imageUrl } = req.body;
-    if (!testPin || !subject || !time || !expiry || !createDate || !imageUrl) {
-      return res.status(400).json({
-        error: "Missing required fields"
-      });
-    }
-    // const hashedPin_test = testPin ? await bcrypt.hash(testPin, 10) : hashedPin_test; // use uniqueId if provided
-
-    const newtest = await db.collection("tests").doc(testPin).set({
-      subject,
-      testPin,
-      time,
-      expiry,
-      createDate,
-      imageUrl
-    });
-    console.log(newtest)
-
-    res.json("Test added!");
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-
-//deleting a test
-router.delete("/deleteTest/:pin", async (req, res) => {
-  try {
-    const { pin } = req.params;
-    // Ensure pin is provided
-    if (!pin) {
-      return res.status(400).json({
-        error: "No test PIN given in request path."
-      });
-    }
-    //check if pin in db
-    const testDoc = await db.collection("test").doc(pin).get();
-    if (!testDoc.exists) {
-      return res.status(401).json({ error: "Invalid PIN" });
-
-    }
-    // Delete test document using pin
-    else {
-      await db.collection("test").doc(pin).delete();
-
-      // Customize response message
-      const response = {
-        message: `Test with pin ${pin} deleted successfully`
-      };
-    }
-
-
-    res.json(response);
-  } catch (error) {
-    console.error("Error deleting test:", error);
-    res.status(500).json({ error: "Failed to delete test" });
-  }
-});
-
-//update a test
-router.put("/updateTest/:pin", async (req, res) => {
-  try {
-    const whitelist = ["testname", "time", "expiry", "imageUrl"]; // Fields allowed for update
-
-    if (error) {
-      return res.status(400).json({ error: error.details[0].message });
-    }
-
-    // Filter allowed fields and retrieve existing test
-    const updatedData = Object.fromEntries(
-      Object.entries(req.body).filter(([key]) => whitelist.includes(key))
-    );
-    const testDoc = await db.collection("test").doc(pin).get();
-
-    // Check if the test exists
-    if (!testDoc.exists) {
-      return res.status(404).json({ error: "Test not found" });
-    }
-
-    // Preserve protected fields and merge updates
-    const protectedFields = ["pin", "created"]; // Fields that cannot be changed
-    const finalData = {
-      ...testDoc.data(),
-      ...updatedData,
-      ...Object.fromEntries(
-        protectedFields.map((field) => [field, testDoc.data()[field]])
-      ),
-    };
-
-    // Update the test document
-    await db.collection("test").doc(pin).update(finalData);
-
-    // Send success response
-    const response = {
-      message: `Test with pin ${pin} updated successfully`
-    };
-
-    res.json(response);
-
-    res.json(response);
-  } catch (error) {
-    console.error("Error updating test:", error);
-    res.status(500).json({ error: "Failed to update test" });
-  }
-});
-
-
 //get all tests
 router.get("/", async (req, res) => {
   try {
@@ -126,33 +16,183 @@ router.get("/", async (req, res) => {
   }
 });
 
+//adding a test
+router.post("/create", async (req, res) => {
+  try {
+    const {subject, time, expiry, createDate, imageUrl } = req.body;
+    if (!subject || !time || !expiry || !createDate || !imageUrl) {
+      return res.status(400).json({
+        error: "Missing required fields"
+      });
+    }
+    async function generateUniquePin() {
+      let testID;
+      let pinExists = true;
+      // Keep generating PINs until a unique one is found
+      while (pinExists) {
+          testID = crypto.randomInt(1000, 9999).toString().padStart(4, "0");
+          const studentDoc = await db.collection("students").doc(testID).get();
+          pinExists = studentDoc.exists;
+      }
+      return testID;
+    }
+    const testID = await generateUniquePin();
+    const newtest = await db.collection("tests").doc(testID).set({
+      subject,
+      testID,
+      time,
+      expiry,
+      createDate,
+      imageUrl,
+      questions: []
+  });
 
+    const response = {
+      message: "Test created successfully",
+      testID: testID,
+      subject,
+      time,
+      expiry,
+      createDate,
+      imageUrl
+    };
+
+    res.json(response);} 
+  catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+
+//deleting a test
+router.delete("/delete/:testID", async (req, res) => {
+  try {
+    const { testID } = req.params;
+    // Ensure pin is provided
+    if (!testID) {
+      return res.status(400).json({
+        error: "No testID given in request path."
+      });
+    }
+    //check if pin in db
+    const testDoc = await db.collection("tests").doc(testID).get();
+    if (!testDoc.exists) {
+      return res.status(404).json({ error: "Test not found" });
+
+    }
+    // Delete test document using pin
+    else {
+      await db.collection("tests").doc(testID).delete();
+
+      // Customize response message
+      const response = {
+        message: `Test deleted successfully`
+      };
+      res.json(response);
+    }
+    
+  } catch (error) {
+    console.error("Error deleting test:", error);
+    res.status(500).json({ error: "Failed to delete test" });
+  }
+});
+
+//update a test
+router.put("/update/:testID", async (req, res) => {
+  try {
+    const whitelist = ["subject", "time", "expiry", "imageUrl"]; // Fields allowed for update
+    const { testID } = req.params;
+    // Filter allowed fields and retrieve existing test
+    const keys = Object.keys(req.body);
+
+    // Check if any key is not in the whitelist
+    const invalidFields = keys.filter(key => !whitelist.includes(key));
+
+    if (invalidFields.length > 0) {
+      return res.status(405).json({ error: "Invalid field(s): " + invalidFields.join(", ") });
+    }
+
+    const updatedData = Object.fromEntries(
+      Object.entries(req.body).filter(([key]) => whitelist.includes(key))
+    );
+
+    //check if request fields in DB
+    if (Object.keys(updatedData).length === 0) {
+      return res.status(400).json({ error: "No fields to update" });
+    }
+
+    const testDoc = await db.collection("tests").doc(testID).get();
+
+    // Check if the test exists
+    if (!testDoc.exists) {
+      return res.status(404).json({ error: "Test not found" });
+    }
+
+    // Preserve protected fields and merge updates
+    const protectedFields = ["testID", "createDate"]; // Fields that cannot be changed
+    const finalData = {
+      ...testDoc.data(),
+      ...updatedData,
+      ...Object.fromEntries(
+        protectedFields.map((field) => [field, testDoc.data()[field]])
+      ),
+    };
+
+    // Update the test document
+    await db.collection("tests").doc(testID).update(finalData);
+
+    // Send success response
+    const response = {
+      message: `Test updated successfully`
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error("Error updating test:", error);
+    res.status(500).json({ error: "Failed to update test" });
+  }
+});
 
 // Add a question to a test (POST /tests/:testId/questions)
-router.post('/:testId/questions', async (req, res) => {
+router.post('/:testID/questions', async (req, res) => {
   try {
-    const { testId } = req.params;
+    const { testID } = req.params;
     // const { error } = questionSchema.validate(req.body);
 
     // if (error) {
     //   return res.status(400).json({ error: error.details[0].message });
     // }
 
-    const { questionId, text, type, difficulty, options = [] } = req.body;
+    const {text, type, difficulty, options = [] } = req.body;
 
-
-
-    await db.collection('tests').doc(testId).update({
-      $push: { questions: questionId }
+    if (!text || !type || !difficulty || !options) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    else if(options.length < 4){
+      return res.status(402).json({ error: 'Minimum 4 options required' });
+    }
+    async function generateUniquePin() {
+      let questionID;
+      let pinExists = true;
+      // Keep generating PINs until a unique one is found
+      while (pinExists) {
+          questionID = crypto.randomInt(1000, 9999).toString().padStart(4, "0");
+          const questionDoc = await db.collection("questions").doc(questionID).get();
+          pinExists = questionDoc.exists;
+      }
+      return questionID;
+    }
+    const questionID = await generateUniquePin();
+    await db.collection('tests').doc(testID).update({
+      questions: admin.firestore.FieldValue.arrayUnion(questionID)
     });
-
-    await db.collection('questions').doc(questionId).set({
-      questionId,
+    await db.collection('questions').doc(questionID).set({
+      questionID,
       text,
       type,
       difficulty,
       options,
-      testId
+      testID
     });
 
     res.send({ message: 'Question added successfully' });
@@ -163,10 +203,10 @@ router.post('/:testId/questions', async (req, res) => {
 });
 
 // Retrieve all questions for a test (GET /tests/:testId/questions)
-router.get('/tests/:testId/questions', async (req, res) => {
+router.get('/:testID/questions', async (req, res) => {
   try {
-    const { testId } = req.params;
-    const testDoc = await db.collection('tests').doc(testId).get();
+    const { testID } = req.params;
+    const testDoc = await db.collection('tests').doc(testID).get();
 
     if (!testDoc.exists) {
       return res.status(404).json({ error: 'Test not found' });
@@ -183,17 +223,17 @@ router.get('/tests/:testId/questions', async (req, res) => {
 });
 
 //delete a question
-router.delete('/:testId/questions/:questionId', async (req, res) => {
+router.delete('/:testID/questions/:questionID', async (req, res) => {
   try {
-    const { testId, questionId } = req.params;
+    const { testID, questionID } = req.params;
 
-    const quesDoc = await db.collection('tests').doc(questionId).get();
+    const quesDoc = await db.collection('questions').doc(questionID).get();
     if (!quesDoc.exists) {
       return res.status(404).json({ error: 'Question not found' });
     }
-    await db.collection('questions').doc(questionId).delete();
-    await db.collection('tests').doc(testId).update({
-      questions: db.arrayRemove(questionId)
+    await db.collection('questions').doc(questionID).delete();
+    await db.collection('tests').doc(testID).update({
+      questions: admin.firestore.FieldValue.arrayRemove(questionID)
     });
     res.send({ message: 'Question deleted successfully' });
   } catch (error) {
@@ -202,5 +242,46 @@ router.delete('/:testId/questions/:questionId', async (req, res) => {
   }
 })
 
+//update a question
+router.put('/:testID/questions/:questionID', async (req, res) => {
+  try {
+    const { testID, questionID } = req.params;
+    const whitelist = ['text', 'type', 'difficulty', 'options'];
+    // Filter allowed fields and retrieve existing test
+    const keys = Object.keys(req.body);
+
+    // Check if any key is not in the whitelist
+    const invalidFields = keys.filter(key => !whitelist.includes(key));
+
+    if (invalidFields.length > 0) {
+      return res.status(405).json({ error: "Invalid field(s): " + invalidFields.join(", ") });
+    }
+
+    const updatedData = Object.fromEntries(
+      Object.entries(req.body).filter(([key]) => whitelist.includes(key))
+    );
+
+    //check if request fields in DB
+    if (Object.keys(updatedData).length === 0) {
+      return res.status(400).json({ error: "No fields to update" });
+    }
+
+    const quesDoc = await db.collection('questions').doc(questionID).get();
+    if (!quesDoc.exists) {
+      return res.status(404).json({ error: 'Question not found' });
+    }
+
+    const finalData = {
+      ...quesDoc.data(),
+      ...updatedData
+    };
+
+    await db.collection('questions').doc(questionID).update(finalData);
+    res.send({ message: 'Question updated successfully' });
+  } catch (error) {
+    console.error('Error updating question:', error);
+    res.status(500).json({ error: 'Failed to update question' });
+  }
+});
 
 module.exports = router;

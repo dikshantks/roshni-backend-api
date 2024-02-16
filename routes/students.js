@@ -7,7 +7,7 @@ const bcrypt = require("bcrypt"); // Password hashing
 
 router.get("/", async (req, res) => {
     try {
-        const students = await db.collection("development-1").get();
+        const students = await db.collection("students").get();
         console.log(students.docs);
         const studentData = students.docs.map((doc) => doc.data());
         res.json(studentData);
@@ -23,10 +23,10 @@ router.get("/", async (req, res) => {
 router.post("/signup", async (req, res) => {
     try {
       // Destructure required fields from request body
-      const { firstName, lastName, dob, gender, location, uniqueId } = req.body;
+      const { firstName, lastName, dob, gender, location} = req.body;
   
       // Validate all required fields
-      if (!firstName || !lastName || !dob || !gender || !location || !uniqueId) {
+      if (!firstName || !lastName || !dob || !gender || !location) {
         return res.status(400).json({
           error: "Missing required fields: firstName, lastName, dob, gender, location"
         });
@@ -34,27 +34,38 @@ router.post("/signup", async (req, res) => {
   
       const dobRegex = /^\d{2}-\d{2}-\d{4}$/;
       if (!dobRegex.test(dob)) {
-        return res.status(400).json({
+        return res.status(401).json({
           error: "Invalid DOB format. Please use DD-MM-YYYY."
         });
       }
-      // Hash the PIN securely (consider storing only the hash)
-      const hashedPin = uniqueId ? await bcrypt.hash(uniqueId, 10) : hashedPin; // use uniqueId if provided
-  
+
+      async function generateUniquePin() {
+        let pin;
+        let pinExists = true;
+        // Keep generating PINs until a unique one is found
+        while (pinExists) {
+            pin = crypto.randomInt(1000, 9999).toString().padStart(4, "0");
+            const studentDoc = await db.collection("students").doc(pin).get();
+            pinExists = studentDoc.exists;
+        }
+        return pin;
+      }
+      const pin = await generateUniquePin();
+
       // Create a student document in Firestore
-      const studentRef = await db.collection("students").doc(uniqueId || pin).set({
+      const studentRef = await db.collection("students").doc(pin).set({
         firstName,
         lastName,
         dob,
         gender,
         location,
-        pin: hashedPin, // Store only the hashed PIN (or uniqueId if used)
+        pin: pin, // Store only the hashed PIN (or uniqueId if used)
       });
   
       // Customize response JSON
       const response = {
         message: "Student created successfully",
-        studentId: uniqueId || pin, // use uniqueId if provided
+        studentId: pin, // use uniqueId if provided
       };
   
       res.json(response);
@@ -74,16 +85,13 @@ router.post("/signup", async (req, res) => {
           error: "Missing student unique ID in request path."
         });
       }
-  
-      // Delete student document using uniqueId
+      const studentDoc = await db.collection("students").doc(uniqueId).get();
+      if (!studentDoc.exists) {
+          return res.status(404).json({ error: "Student not found" });
+      }
+      else{
       await db.collection("students").doc(uniqueId).delete();
-  
-      // Customize response message
-      const response = {
-        message: `Student with ID ${uniqueId} deleted successfully`
-      };
-  
-      res.json(response);
+      res.json({ message: "Student deleted successfully" });}
     } catch (error) {
       console.error("Error deleting student:", error);
       res.status(500).json({ error: "Failed to delete student" });
