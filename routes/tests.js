@@ -163,13 +163,16 @@ router.post('/:testID/questions', async (req, res) => {
     //   return res.status(400).json({ error: error.details[0].message });
     // }
 
-    const {text, type, difficulty, options = [] } = req.body;
+    const {text, type, difficulty, options = [], correct } = req.body;
 
-    if (!text || !type || !difficulty || !options) {
+    if (!text || !type || !difficulty || !options || !correct) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
     else if(options.length < 4){
       return res.status(402).json({ error: 'Minimum 4 options required' });
+    }
+    else if(!options.includes(correct)){
+      return res.status(403).json({ error: 'Correct answer not in options' });
     }
     async function generateUniquePin() {
       let questionID;
@@ -192,6 +195,7 @@ router.post('/:testID/questions', async (req, res) => {
       type,
       difficulty,
       options,
+      correct,
       testID
     });
 
@@ -246,7 +250,7 @@ router.delete('/:testID/questions/:questionID', async (req, res) => {
 router.put('/:testID/questions/:questionID', async (req, res) => {
   try {
     const { testID, questionID } = req.params;
-    const whitelist = ['text', 'type', 'difficulty', 'options'];
+    const whitelist = ['text', 'type', 'difficulty', 'options','correct'];
     // Filter allowed fields and retrieve existing test
     const keys = Object.keys(req.body);
 
